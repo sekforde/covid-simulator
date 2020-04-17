@@ -1,4 +1,5 @@
 import Emitter from './Emitter';
+import Point from './Point';
 import Person from './Person';
 import Town from './Town';
 import utils from './utils';
@@ -15,6 +16,7 @@ class World extends Emitter {
     this.maxSpeed = opts.settings.maxSpeed || 150;
     this.infectionLength = opts.settings.infectionLength * 1000 || 10000;
     this.deathRate = opts.settings.deathRate || 0;
+    this.superSpreaders = [];
 
     this.epochTarget = 10;
     this.epochActual = 0;
@@ -25,14 +27,14 @@ class World extends Emitter {
     this.uninfected = 0;
     this.infected = 0;
     this.immune = 0;
+    this.dead = 0;
+
     const dtg = new Date();
     this.epochActual = dtg.getTime();
-    // this.createPopulation();
-    // this.calcStats();
   }
 
-  addTown(name, size, x, y, population) {
-    const town = new Town(name, size, x, y, population);
+  addTown(townOptions) {
+    const town = new Town(townOptions);
     this.towns.push(town);
     return town;
   }
@@ -47,13 +49,33 @@ class World extends Emitter {
   createPopulation() {
     this.towns.forEach(town => {
       for (let p = 0; p < town.population; p++) {
-        const person = new Person(this.population.length, this);
-        const x = utils.randBetween(town.left, town.right);
-        const y = utils.randBetween(town.top, town.bottom);
-        person.setLocation(x, y);
-        person.setSpeed();
+        const person = new Person(this.population.length, 'normal', this);
+        const pt = new Point(
+          utils.randBetween(town.left, town.right),
+          utils.randBetween(town.top, town.bottom)
+        );
+        person.setOrigin(pt);
         person.setRadius(6);
+        person.setRandomDestination();
+        person.town = town;
         this.population.push(person);
+      }
+    });
+  }
+
+  createSuperSpreaders() {
+    this.towns.forEach(town => {
+      for (let p = 0; p < town.superSpreaderCount; p++) {
+        const person = new Person(this.population.length, 'super-spreader', this);
+        const pt = new Point(
+          utils.randBetween(town.left, town.right),
+          utils.randBetween(town.top, town.bottom)
+        );
+        person.setOrigin(pt);
+        person.setRadius(6);
+        person.town = town;
+        this.population.push(person);
+        this.superSpreaders.push(person);
       }
     });
   }
@@ -95,11 +117,8 @@ class World extends Emitter {
     this.population.forEach(person1 => {
       this.population.forEach(person2 => {
         if (person1.key !== person2.key) {
-          const dx = person1.x - person2.x;
-          const dy = person1.y - person2.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
+          const distance = person1.distanceFrom(person2);
           if (distance < radius) {
-            // console.log(`collision between ${person1.key} and ${person2.key}`);
             person1.contactWith(person2);
           }
         }
@@ -109,8 +128,20 @@ class World extends Emitter {
 
   updatePopulation(elapsed) {
     this.population.forEach(person => {
-      person.update(elapsed);
+      if (person.type === 'normal') {
+        person.update(elapsed);
+      }
     });
+  }
+
+  killMe(person) {
+    const removeIndex = this.population
+      .map(p => p.id)
+      .indexOf(person.key);
+    console.log(removeIndex);
+    if (removeIndex > -1) {
+      this.population.splice(removeIndex, 1);
+    }
   }
 
   start() {

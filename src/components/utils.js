@@ -17,11 +17,17 @@ export default {
   rad2deg(rad) {
     return (rad * 180) / Math.PI;
   },
-  getBearing(x1, y1, x2, y2) {
-    let angle = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
-    if (angle < 0) {
-      angle = 360 + angle;
-    }
-    return angle;
-  }
+  // getBearing(p1, p2) {
+  //   let angle = (Math.atan2(p2.y - p1.y, p2.x - p2.x) * 180) / Math.PI;
+  //   if (angle < 0) {
+  //     angle = 360 + angle;
+  //   }
+  //   return angle;
+  // },
+  // getDistance(p1, p2) {
+  //   const dx = p2.x - p1.x;
+  //   const dy = p2.y - p1.y;
+  //   const distance = Math.random(dx * dx + dy * dy);
+  //   return distance;
+  // }
 };

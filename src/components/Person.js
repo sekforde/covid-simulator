@@ -1,118 +1,145 @@
 import Emitter from './Emitter';
+import Point from './Point';
+// import Line from './Line';
 import utils from './utils';
 
 class Person extends Emitter {
-  constructor(key, world) {
+  constructor(key, type, world) {
     super();
     this.world = world;
     this.status = 'uninfected';
+    this.type = type || 'normal';
     this.key = key;
-    this.vx = 0;
-    this.vy = 0;
-    this.x = 0;
-    this.y = 0;
-    this.originX = 0;
-    this.originY = 0;
+    this.location = new Point();
+    this.destination = new Point();
+    this.velocity = new Point();
+    this.origin = new Point();
+    this.pointer = new Point();
     this.distance = 0;
     this.bearing = 0;
     this.originAngle = 0;
+    this.speed = 0;
+    this.cycleLength = utils.randBetween(10, 20);
+    this.shoppingFrequency = utils.randBetween(3, this.cycleLength / 2);
+    this.travelFrequency = utils.randBetween(3, this.cycleLength);
+    this.cycle = 0;
 
     this.radius = world.radius || 3;
     this.maxDistance = world.maxDistance || 100;
     this.maxSpeed = world.maxSpeed || 100;
     this.infectionLength = world.infectionLength || 10000;
     this.deathRate = world.deathRate || 0;
+  }
 
-    this.setDirection();
-    this.setSpeed();
-    this.setNewDirection();
-    setInterval(() => {
-      if (this.world.running) {
-        this.setNewDirection();
-      }
-    }, utils.randBetween(1000, 5000));
+  distanceFrom(person2) {
+    return this.location.distanceFrom(person2.location);
   }
 
   setRadius(r) {
     this.radius = r;
   }
 
-  setLocation(x, y) {
-    this.x = x;
-    this.y = y;
-    this.originX = x;
-    this.originY = y;
-    this.setDirection();
+  setRandomDestination() {
+    const distance = utils.randBetween(-this.maxDistance / 2, this.maxDistance / 2);
+    const bearing = utils.randBetween(0, 360);
+    const destination = new Point();
+    destination.set(this.origin);
+    destination.add(
+      distance * Math.cos(utils.deg2rad(bearing)),
+      distance * Math.sin(utils.deg2rad(bearing))
+    );
+    this.travelTo(destination);
   }
 
-  setOriginDirection() {
-    this.originBearing = utils.getBearing(this.x, this.y, this.originX, this.originY);
+  goToAShop() {
+    const townName = this.town.name;
+    const townShops = this.world.superSpreaders.filter(s => s.town.name === townName);
+    const i = utils.randBetween(0, townShops.length - 1);
+    const shop = townShops[i];
+    this.travelTo(shop.location);
   }
 
-  setDirection() {
-    this.bearing = utils.randBetween(0, 360);
+  goToAnotherCity() {
+    const towns = this.world.towns;
+    const i = utils.randBetween(0, towns.length - 1);
+    const townCentre = new Point();
+    townCentre.set(towns[i]);
+    this.travelTo(townCentre);
+  }
+
+  travelTo(destination) {
+    this.destination.set(destination);
+    this.distanceToDestination = this.location.distanceFrom(this.destination);
+    this.originBearing = this.location.angleTo(this.origin);
+    this.destinationBearing = this.location.angleTo(this.destination);
     this.drawBearingLine();
-  }
-
-  setNewDirection() {
-    let distanceIndex = (this.distance / this.maxDistance) ** 2;
-    if (distanceIndex > 1) {
-      distanceIndex = 1;
-    }
-
-    this.setOriginDirection();
-
-    // restrict the range of movement the further away from the origin
-    const spread = 360 * (1 - distanceIndex);
-    const startAngle = this.originBearing - spread / 2;
-    const endAngle = this.originBearing + spread / 2;
-    this.bearing = utils.randBetween(startAngle, endAngle);
-
     this.setSpeed();
+    const time = this.distanceToDestination / this.speed;
+
+    setTimeout(() => {
+      if (this.cycle === this.shoppingFrequency) {
+        this.goToAShop();
+      } else if (this.cycle === this.travelFrequency) {
+        this.goToAnotherCity();
+      } else {
+        this.setRandomDestination();
+      }
+      this.cycle++;
+      if (this.cycle > this.cycleLength) {
+        this.cycle = 0;
+      }
+    }, time * 1200);
   }
 
   setSpeed() {
-    this.speed = utils.randBetween(1, this.maxSpeed);
-    this.vx = this.speed * Math.cos(utils.deg2rad(this.bearing));
-    this.vy = this.speed * Math.sin(utils.deg2rad(this.bearing));
-    this.drawBearingLine();
+    this.speed = utils.randBetween(this.maxSpeed * 0.2, this.maxSpeed);
+    this.velocity.x = this.speed * Math.cos(utils.deg2rad(this.destinationBearing));
+    this.velocity.y = this.speed * Math.sin(utils.deg2rad(this.destinationBearing));
+  }
+
+  setOrigin(p) {
+    this.location.set(p);
+    this.origin.set(p);
+    this.setOriginDirection();
+  }
+
+  setOriginDirection() {
+    this.originBearing = this.location.angleTo(this.origin);
   }
 
   drawBearingLine() {
-    const dx = this.speed * Math.cos(utils.deg2rad(this.bearing));
-    const dy = this.speed * Math.sin(utils.deg2rad(this.bearing));
-    this.lineX1 = this.x;
-    this.lineY1 = this.y;
-    this.lineX2 = this.lineX1 + dx;
-    this.lineY2 = this.lineY1 + dy;
+    const dx = this.speed * Math.cos(utils.deg2rad(this.destinationBearing));
+    const dy = this.speed * Math.sin(utils.deg2rad(this.destinationBearing));
+    this.pointer.set(this.location);
+    this.pointer.add(dx, dy);
   }
 
   update(elapsed) {
-    const dx = (elapsed / 1000) * this.vx;
-    const dy = (elapsed / 1000) * this.vy;
+    const dx = (elapsed / 1000) * this.velocity.x;
+    const dy = (elapsed / 1000) * this.velocity.y;
     this.move(dx, dy);
-    this.setOriginDirection();
     this.drawBearingLine();
   }
 
   move(dx, dy) {
-    this.x += dx;
-    this.y += dy;
-    if (this.x < 0) {
-      this.vx = -this.vx;
+    this.location.add(dx, dy, this.velocity.x);
+    if (this.location.x < 0) {
+      this.velocity.x = -this.velocity.x;
     }
-    if (this.x > this.world.width) {
-      this.vx = -this.vx;
+    if (this.location.x > this.world.width) {
+      this.velocity.x = -this.velocity.x;
     }
-    if (this.y < 0) {
-      this.vy = -this.vy;
+    if (this.location.y < 0) {
+      this.velocity.y = -this.velocity.y;
     }
-    if (this.y > this.world.height) {
-      this.vy = -this.vy;
+    if (this.location.y > this.world.height) {
+      this.velocity.y = -this.velocity.y;
     }
-    const distX = this.x - this.originX;
-    const distY = this.y - this.originY;
-    this.distance = Math.sqrt(distX * distX + distY * distY);
+    const dist = {
+      x: this.location.x - this.origin.x,
+      y: this.location.y - this.origin.y
+    };
+    this.distance = Math.sqrt(dist.x * dist.x + dist.y * dist.y);
   }
 
   infect() {
@@ -136,6 +163,7 @@ class Person extends Emitter {
   death() {
     console.log('died');
     this.status = 'dead';
+    this.world.killMe(this);
   }
 
   immune() {

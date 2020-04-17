@@ -11,6 +11,12 @@
           <CButton class="m-2" color="danger" size="sm" @click="infect">Infect</CButton>
         </CCol>
       </CRow>
+      <CRow>
+        <CCol sm="12">
+          <CButton class="m-2" color="info" size="sm" @click="preset('high')">High Movement</CButton>
+          <CButton class="m-2" color="info" size="sm" @click="preset('lockdown')">Lockdown</CButton>
+        </CCol>
+      </CRow>
       <br />
       <br />
       <CRow>
@@ -19,6 +25,12 @@
           <CInput v-model="settings.infectionLength" />
         </CCol>
       </CRow>
+      <!-- <CRow>
+        <CCol sm="6">Population Size</CCol>
+        <CCol sm="6">
+          <CInput v-model="populationSize" />
+        </CCol>
+      </CRow>-->
       <CRow>
         <CCol sm="6">Max Distance</CCol>
         <CCol sm="6">
@@ -38,17 +50,72 @@
         </CCol>
       </CRow>
       <CRow>
-        <CCol sm="6">Radius</CCol>
+        <CCol sm="6">Contagion Radius</CCol>
         <CCol sm="6">
-          <CInput v-model="settings.infectionRadius" />
+          <div class="p10">
+            <CInput v-model="settings.infectionRadius" />
+          </div>
+        </CCol>
+      </CRow>
+      <CRow>
+        <CCol sm="9">Show Destination</CCol>
+        <CCol sm="3">
+          <div class="p10">
+            <input type="checkbox" v-model="settings.showDestination" />
+          </div>
+        </CCol>
+      </CRow>
+      <CRow>
+        <CCol sm="9">Show Direction Line</CCol>
+        <CCol sm="3">
+          <div class="p10">
+            <input type="checkbox" v-model="settings.showDirectionLine" />
+          </div>
+        </CCol>
+      </CRow>
+      <CRow>
+        <CCol sm="9">Show Home Base</CCol>
+        <CCol sm="3">
+          <div class="p10">
+            <input type="checkbox" v-model="settings.showOrigin" />
+          </div>
         </CCol>
       </CRow>
       <CRow>
         <CCol sm="9">Show Infection Radius</CCol>
         <CCol sm="3">
-          <CInputCheckbox v-model="settings.showInfectionRadius" />
+          <div class="p10">
+            <input type="checkbox" v-model="settings.showInfectionRadius" />
+          </div>
         </CCol>
       </CRow>
+      <CRow>
+        <CCol sm="12">
+          <br />
+          <br />
+          <table class="table">
+            <tbody>
+              <tr>
+                <td>Uninfected</td>
+                <td>{{uninfected}}</td>
+              </tr>
+              <tr>
+                <td>Infected</td>
+                <td>{{infected}}</td>
+              </tr>
+              <tr>
+                <td>Immune</td>
+                <td>{{immune}}</td>
+              </tr>
+              <tr>
+                <td>Dead</td>
+                <td>{{dead}}</td>
+              </tr>
+            </tbody>
+          </table>
+        </CCol>
+      </CRow>
+
       <span class="chart-container">
         <!-- <InfectionChart :chart-data="chartData"></InfectionChart> -->
       </span>
@@ -70,10 +137,10 @@
             class="particle"
             v-for="p in population"
             :key="`${p.key}-person`"
-            :cx="p.x"
-            :cy="p.y"
+            :cx="p.location.x"
+            :cy="p.location.y"
             :r="settings.radius"
-            :class="p.status"
+            :class="`${p.status} ${p.type}`"
           />
           <g v-if="settings.showInfectionRadius">
             <circle
@@ -81,19 +148,19 @@
               class="infection"
               v-for="p in population"
               :key="`${p.key}-infection`"
-              :cx="p.x"
-              :cy="p.y"
+              :cx="p.location.x"
+              :cy="p.location.y"
               :r="settings.infectionRadius"
             />
           </g>
           <g v-if="settings.showDirectionLine">
             <line
-              v-for="p in population"
+              v-for="p in normalPopulation"
               :key="`${p.key}-direction`"
-              :x1="p.lineX1"
-              :y1="p.lineY1"
-              :x2="p.lineX2"
-              :y2="p.lineY2"
+              :x1="p.location.x"
+              :y1="p.location.y"
+              :x2="p.pointer.x"
+              :y2="p.pointer.y"
               class="origin-line"
             />
           </g>
@@ -101,11 +168,21 @@
             <circle
               :id="`person-${p.key}-origin`"
               class="origin"
-              v-for="p in population"
+              v-for="p in normalPopulation"
               :key="`${p.key}-origin`"
-              :cx="p.originX"
-              :cy="p.originY"
+              :cx="p.origin.x"
+              :cy="p.origin.y"
               :r="2"
+            />
+          </g>
+          <g v-if="settings.showDestination">
+            <circle
+              class="destination"
+              v-for="p in normalPopulation"
+              :key="`${p.key}-destination`"
+              :cx="p.destination.x"
+              :cy="p.destination.y"
+              :r="5"
             />
           </g>
         </g>
@@ -128,9 +205,9 @@ export default {
   },
   data() {
     return {
-      width: 1000,
+      width: 1400,
       height: 800,
-      populationSize: 200,
+      // populationSize: 200,
       radius: 3,
       world: null,
       towns: [],
@@ -138,33 +215,34 @@ export default {
       chartData: [],
       settings: {
         infectionLength: 10,
-        deathRate: 0.04,
+        deathRate: 0.2,
         maxDistance: 100,
         maxSpeed: 100,
         radius: 6,
         infectionRadius: 10,
+        showDestination: false,
         showDirectionLine: false,
         showOrigin: false,
-        showInfectionRadius: true
+        showInfectionRadius: false
       }
     };
   },
-  created() {
-    // const worldSettings = {
-    //   settings: this.settings,
-    //   width: this.width,
-    //   height: this.height,
-    //   populationSize: this.populationSize
-    // };
-    // const world = new World(worldSettings);
-    // // const london =
-    // world.addTown('London', 400, 750, 250, 50);
-    // // const edinburgh =
-    // world.addTown('Edinburgh', 300, 200, 600, 25);
-    // world.createPopulation();
-    // this.world = world;
-    // this.towns = world.towns;
-    // this.population = world.population;
+  computed: {
+    normalPopulation() {
+      return this.population.filter(p => p.type === 'normal');
+    },
+    infected() {
+      return this.world ? this.world.infected : 0;
+    },
+    uninfected() {
+      return this.world ? this.world.uninfected : 0;
+    },
+    immune() {
+      return this.world ? this.world.immune : 0;
+    },
+    dead() {
+      return this.world ? this.world.dead : 0;
+    }
   },
   methods: {
     start() {
@@ -176,19 +254,56 @@ export default {
     infect() {
       this.world.infectSomeone();
     },
+    preset(name) {
+      if (name === 'high') {
+        this.settings.infectionLength = 10;
+        this.settings.deathRate = 0.04;
+        this.settings.maxDistance = 150;
+        this.settings.maxSpeed = 150;
+        this.settings.radius = 6;
+        this.settings.infectionRadius = 15;
+        this.populate();
+      }
+      if (name === 'lockdown') {
+        this.settings.infectionLength = 10;
+        this.settings.deathRate = 0.04;
+        this.settings.maxDistance = 15;
+        this.settings.maxSpeed = 25;
+        this.settings.radius = 6;
+        this.settings.infectionRadius = 8;
+        this.populate();
+      }
+    },
     populate() {
       const worldSettings = {
         settings: this.settings,
         width: this.width,
-        height: this.height,
-        populationSize: this.populationSize
+        height: this.height
+        // populationSize: this.populationSize
       };
       const world = new World(worldSettings);
-      // const london =
-      world.addTown('London', 400, 750, 250, 50);
-      // const edinburgh =
-      world.addTown('Edinburgh', 300, 200, 600, 25);
+
+      world.addTown({
+        name: 'London',
+        size: 400,
+        x: 750,
+        y: 250,
+        population: 50,
+        superSpreaderCount: 4
+      });
+
+      world.addTown({
+        name: 'Edinburgh',
+        size: 300,
+        x: 200,
+        y: 600,
+        population: 25,
+        superSpreaderCount: 2
+      });
+
       world.createPopulation();
+      world.createSuperSpreaders();
+
       this.world = world;
       this.towns = world.towns;
       this.population = world.population;
@@ -200,7 +315,7 @@ export default {
 <style scoped>
 .layout {
   display: grid;
-  grid-template-columns: 300px auto;
+  grid-template-columns: auto 1400px;
 }
 .chart-container {
   padding: 50px;
@@ -221,6 +336,10 @@ rect.town {
 }
 svg {
   background-color: black;
+}
+circle.super-spreader {
+  stroke: greenyellow;
+  stroke-width: 4px;
 }
 circle.infected {
   fill: red;
@@ -247,5 +366,11 @@ circle.infection {
   fill: none;
   stroke: red;
   stroke-width: 1px;
+}
+circle.destination {
+  fill: pink;
+}
+.p10 {
+  padding: 10px;
 }
 </style>
